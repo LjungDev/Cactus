@@ -10,4 +10,13 @@ UCLASS()
 class CACTUS_API USimpleMovementComponent final : public UPawnMovementComponent
 {
 	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, Category="Movement")
+	float MoveSpeed;
+
+	USimpleMovementComponent();
+	
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
+	                           FActorComponentTickFunction* ThisTickFunction) override;
 };
