@@ -34,6 +34,15 @@ void USimpleMovementComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 	// Move
 	const FRotator& Rotation = UpdatedComponent->GetComponentRotation();
-	MoveUpdatedComponent(MovementDelta, Rotation, false);
+
+	FHitResult Hit;
+	SafeMoveUpdatedComponent(MovementDelta, Rotation, true, Hit);
+	
+	if (Hit.IsValidBlockingHit())
+	{
+		HandleImpact(Hit, DeltaTime, MovementDelta);
+		SlideAlongSurface(MovementDelta, 1.0f - Hit.Time, Hit.Normal, Hit, true);
+	}
+	
 	UpdateComponentVelocity();
 }
