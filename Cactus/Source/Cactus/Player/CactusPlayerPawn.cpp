@@ -31,6 +31,8 @@ void ACactusPlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 		                                         &ACactusPlayerPawn::OnInput_Move);
 		PlayerEnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this,
 		                                         &ACactusPlayerPawn::OnInput_Look);
+		PlayerEnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this,
+		                                         &ACactusPlayerPawn::OnInput_Jump);
 	}
 }
 
@@ -55,4 +57,9 @@ void ACactusPlayerPawn::OnInput_Look(const FInputActionValue& Value)
 	// Update yaw
 	const FRotator ActorRotationDelta = FRotator(0, VectorValue.X, 0);
 	AddActorWorldRotation(ActorRotationDelta);
+}
+
+void ACactusPlayerPawn::OnInput_Jump()
+{
+	MovementComponent->Jump();
 }

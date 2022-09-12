@@ -6,6 +6,13 @@
 #include "GameFramework/PawnMovementComponent.h"
 #include "SimpleMovementComponent.generated.h"
 
+UENUM()
+enum EMovementState
+{
+	Walking,
+	Falling
+};
+
 UCLASS()
 class CACTUS_API USimpleMovementComponent final : public UPawnMovementComponent
 {
@@ -15,8 +22,31 @@ public:
 	UPROPERTY(EditAnywhere, Category="Movement")
 	float MoveSpeed;
 
+	UPROPERTY(EditAnywhere, Category="Movement")
+	float JumpForce;
+
+	UPROPERTY(EditAnywhere, Category="Movement")
+	float MaxCeilingStopAngle;
+
 	USimpleMovementComponent();
-	
+
+	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
+
+	void Jump();
+
+private:
+	UPROPERTY()
+	UCapsuleComponent* UpdatedCollider;
+
+	EMovementState MovementState;
+
+	FVector GetDesiredInputMovement(const FVector InputVector) const;
+	bool CheckForGround(FHitResult& OutHit) const;
+
+	bool Move(FHitResult& OutInitialHit, const float DeltaTime);
+
+	void DoMovement_Walking(const float DeltaTime);
+	void DoMovement_Falling(const float DeltaTime);
 };
