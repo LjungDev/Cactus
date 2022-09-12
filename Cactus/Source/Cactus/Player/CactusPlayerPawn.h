@@ -30,6 +30,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category="Input")
 	UInputAction* LookAction;
 
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	UInputAction* JumpAction;
+
 	UPROPERTY(EditAnywhere, Category="Input")
 	FVector2D CameraSensitivity;
 
@@ -44,4 +47,5 @@ protected:
 private:
 	void OnInput_Move(const FInputActionValue& Value);
 	void OnInput_Look(const FInputActionValue& Value);
+	void OnInput_Jump();
 };
