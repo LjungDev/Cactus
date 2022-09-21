@@ -6,7 +6,8 @@
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/PhysicsVolume.h"
 
-USimpleMovementComponent::USimpleMovementComponent(): MoveSpeed(600.0f), JumpForce(420.0f), MaxCeilingStopAngle(5.0f)
+USimpleMovementComponent::USimpleMovementComponent(): MoveSpeed(600.0f), JumpForce(420.0f), MaxCeilingStopAngle(5.0f),
+                                                      MaxStepDownHeight(20.0f)
 {
 }
 
@@ -65,15 +66,14 @@ FVector USimpleMovementComponent::GetDesiredInputMovement(const FVector InputVec
 	return Movement;
 }
 
-bool USimpleMovementComponent::CheckForGround(FHitResult& OutHit) const
+bool USimpleMovementComponent::CheckForGround(FHitResult& OutHit, const float Height) const
 {
 	if (!UpdatedCollider)
 	{
 		return false;
 	}
 
-	constexpr static float ZOffset = 5.0f;
-	const FVector Offset = FVector::UpVector * ZOffset;
+	const FVector Offset = FVector::UpVector * Height;
 	const FVector ColliderLocation = UpdatedCollider->GetComponentLocation();
 	const FVector StartLocation = ColliderLocation;
 	const FVector EndLocation = ColliderLocation - Offset;
@@ -113,6 +113,21 @@ bool USimpleMovementComponent::Move(FHitResult& OutInitialHit, const float Delta
 	return false;
 }
 
+void USimpleMovementComponent::StepDown()
+{
+	FHitResult GroundHit;
+	CheckForGround(GroundHit, MaxStepDownHeight);
+
+	if (GroundHit.IsValidBlockingHit())
+	{
+		const FVector Diff = GroundHit.Location - GroundHit.TraceStart;
+		const FVector StepCorrection = FVector::UpVector * -FMath::Abs(Diff.Z);
+
+		const FRotator& Rotation = UpdatedComponent->GetComponentRotation();
+		SafeMoveUpdatedComponent(StepCorrection, Rotation, true, GroundHit);
+	}
+}
+
 void USimpleMovementComponent::DoMovement_Walking(const float DeltaTime)
 {
 	const FVector InputVector = ConsumeInputVector();
@@ -121,6 +136,8 @@ void USimpleMovementComponent::DoMovement_Walking(const float DeltaTime)
 
 	FHitResult Hit;
 	Move(Hit, DeltaTime);
+
+	StepDown();
 
 	const bool bIsGrounded = CheckForGround(Hit);
 
