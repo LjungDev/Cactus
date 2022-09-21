@@ -27,6 +27,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category="Movement")
 	float MaxCeilingStopAngle;
+	
+	UPROPERTY(EditAnywhere, Category="Movement")
+	float MaxStepDownHeight;
 
 	USimpleMovementComponent();
 
@@ -43,9 +46,10 @@ private:
 	EMovementState MovementState;
 
 	FVector GetDesiredInputMovement(const FVector InputVector) const;
-	bool CheckForGround(FHitResult& OutHit) const;
+	bool CheckForGround(FHitResult& OutHit, const float Height = 5.0f) const;
 
 	bool Move(FHitResult& OutInitialHit, const float DeltaTime);
+	void StepDown();
 
 	void DoMovement_Walking(const float DeltaTime);
 	void DoMovement_Falling(const float DeltaTime);
