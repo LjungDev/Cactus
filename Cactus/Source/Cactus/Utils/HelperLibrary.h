@@ -20,4 +20,10 @@ public:
 			       ? Enum->GetDisplayNameTextByIndex(static_cast<uint8>(Value)).ToString()
 			       : TEXT("<invalid>");
 	}
+
+	FORCEINLINE static FString PrettyBool(const bool Value)
+	{
+		if (Value) return TEXT("True");
+		return TEXT("False");
+	}
 };
