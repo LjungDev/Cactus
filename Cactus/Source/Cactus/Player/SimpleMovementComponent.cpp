@@ -7,6 +7,8 @@
 #include "GameFramework/PhysicsVolume.h"
 
 USimpleMovementComponent::USimpleMovementComponent(): MoveSpeed(600.0f), JumpForce(420.0f), MaxCeilingStopAngle(5.0f),
+                                                      MaxStepUpHeight(20.0f),
+                                                      MinStepUpSteepness(10.0f),
                                                       MaxStepDownHeight(20.0f)
 {
 }
@@ -66,17 +68,12 @@ FVector USimpleMovementComponent::GetDesiredInputMovement(const FVector InputVec
 	return Movement;
 }
 
-bool USimpleMovementComponent::CheckForGround(FHitResult& OutHit, const float Height) const
+bool USimpleMovementComponent::SweepWithCollider(FHitResult& OutHit, FVector StartLocation, FVector EndLocation) const
 {
 	if (!UpdatedCollider)
 	{
 		return false;
 	}
-
-	const FVector Offset = FVector::UpVector * Height;
-	const FVector ColliderLocation = UpdatedCollider->GetComponentLocation();
-	const FVector StartLocation = ColliderLocation;
-	const FVector EndLocation = ColliderLocation - Offset;
 
 	FCollisionQueryParams SweepParams;
 	SweepParams.AddIgnoredActor(UpdatedCollider->GetOwner());
@@ -84,7 +81,7 @@ bool USimpleMovementComponent::CheckForGround(FHitResult& OutHit, const float He
 	FCollisionResponseParams ResponseParams;
 	UpdatedCollider->InitSweepCollisionParams(SweepParams, ResponseParams);
 
-	FCollisionShape SweepShape = UpdatedCollider->GetCollisionShape();
+	const FCollisionShape SweepShape = UpdatedCollider->GetCollisionShape();
 	const ECollisionChannel CollisionChannel = UpdatedCollider->GetCollisionObjectType();
 
 	bool bDidHit = GetWorld()->SweepSingleByChannel(
@@ -94,23 +91,86 @@ bool USimpleMovementComponent::CheckForGround(FHitResult& OutHit, const float He
 	return bDidHit;
 }
 
-bool USimpleMovementComponent::Move(FHitResult& OutInitialHit, const float DeltaTime)
+bool USimpleMovementComponent::CheckForGround(FHitResult& OutHit, const float Height) const
+{
+	const FVector Offset = FVector::UpVector * Height;
+	const FVector ColliderLocation = UpdatedCollider->GetComponentLocation();
+	const FVector StartLocation = ColliderLocation;
+	const FVector EndLocation = ColliderLocation - Offset;
+
+	return SweepWithCollider(OutHit, StartLocation, EndLocation);
+}
+
+bool USimpleMovementComponent::Move(FHitResult& OutInitialHit, FVector& OutMovementDelta, const float DeltaTime)
 {
 	const FRotator& Rotation = UpdatedComponent->GetComponentRotation();
-	const FVector MovementDelta = Velocity * DeltaTime;
+	OutMovementDelta = Velocity * DeltaTime;
 
-	SafeMoveUpdatedComponent(MovementDelta, Rotation, true, OutInitialHit);
+	SafeMoveUpdatedComponent(OutMovementDelta, Rotation, true, OutInitialHit);
 
 	if (OutInitialHit.IsValidBlockingHit())
 	{
-		HandleImpact(OutInitialHit, DeltaTime, MovementDelta);
-
-		FHitResult Hit(OutInitialHit);
-		SlideAlongSurface(MovementDelta, 1.0f - OutInitialHit.Time, OutInitialHit.Normal, Hit, true);
-
+		HandleImpact(OutInitialHit, DeltaTime, OutMovementDelta);
 		return true;
 	}
+
 	return false;
+}
+
+void USimpleMovementComponent::Slide(const FVector MovementDelta, const FHitResult& Hit)
+{
+	FHitResult UnusedHit(Hit);
+	SlideAlongSurface(MovementDelta, 1.0f - Hit.Time, Hit.Normal, UnusedHit, true);
+}
+
+bool USimpleMovementComponent::IsWithinStepUpSteepness(const FHitResult& Hit) const
+{
+	const float Dot = Hit.ImpactNormal | FVector::UpVector;
+	const float MaxStepUpWallAngleRad = FMath::DegreesToRadians(MinStepUpSteepness);
+	const float MaxDotValue = FMath::Sin(MaxStepUpWallAngleRad);
+	const bool bIsValidAngle = Dot <= MaxDotValue;
+	return bIsValidAngle;
+}
+
+bool USimpleMovementComponent::CanStepUp(const FHitResult& Hit,
+                                         FVector& OutStepUpMovementDelta) const
+{
+	OutStepUpMovementDelta = FVector::ZeroVector;
+
+	if (!Hit.IsValidBlockingHit())
+	{
+		return false;
+	}
+
+	const bool bIsValidAngle = IsWithinStepUpSteepness(Hit);
+	if (!bIsValidAngle)
+	{
+		return false;
+	}
+
+	const FVector ColliderLocation = UpdatedCollider->GetComponentLocation();
+	const FVector OriginalMovementDelta = Hit.TraceEnd - Hit.TraceStart;
+	const FVector DesiredLocation = ColliderLocation + OriginalMovementDelta;
+	const FVector StepUpOffset = FVector::UpVector * (MaxStepUpHeight + 0.1f);
+	const FVector MaxStepUpLocation = DesiredLocation + StepUpOffset;
+
+	FHitResult StepUpHit;
+	const bool bDidHit = SweepWithCollider(StepUpHit, MaxStepUpLocation, DesiredLocation);
+	const bool bCanStepUp = bDidHit && !StepUpHit.bStartPenetrating;
+
+	if (bCanStepUp)
+	{
+		OutStepUpMovementDelta = StepUpHit.Location - ColliderLocation;
+	}
+
+	return bCanStepUp;
+}
+
+void USimpleMovementComponent::StepUp(const FVector& StepUpMovementDelta)
+{
+	FHitResult StepUpMoveHit;
+	SafeMoveUpdatedComponent(StepUpMovementDelta, UpdatedCollider->GetComponentRotation(), false,
+	                         StepUpMoveHit, ETeleportType::TeleportPhysics);
 }
 
 void USimpleMovementComponent::StepDown()
@@ -135,7 +195,29 @@ void USimpleMovementComponent::DoMovement_Walking(const float DeltaTime)
 	Velocity += HorizontalMovement;
 
 	FHitResult Hit;
-	Move(Hit, DeltaTime);
+	FVector MovementDelta;
+	bool bDidHit = Move(Hit, MovementDelta, DeltaTime);
+
+	if (bDidHit)
+	{
+		FVector OutStepUpMovementDelta;
+		bool bCanStepUp = CanStepUp(Hit, OutStepUpMovementDelta);
+
+		if (bCanStepUp)
+		{
+			StepUp(OutStepUpMovementDelta);
+		}
+		else
+		{
+			const bool bIsWithinStepUpSteepness = IsWithinStepUpSteepness(Hit);
+			if (bIsWithinStepUpSteepness)
+			{
+				Hit.Normal = Hit.Normal.GetSafeNormal2D();
+			}
+
+			Slide(MovementDelta, Hit);
+		}
+	}
 
 	StepDown();
 
@@ -161,7 +243,13 @@ void USimpleMovementComponent::DoMovement_Falling(const float DeltaTime)
 	Velocity.Z = FMath::Max(Velocity.Z, -TerminalVelocity);
 
 	FHitResult Hit;
-	bool bDidHit = Move(Hit, DeltaTime);
+	FVector MovementDelta;
+	bool bDidHit = Move(Hit, MovementDelta, DeltaTime);
+
+	if (bDidHit)
+	{
+		Slide(MovementDelta, Hit);
+	}
 
 	// Check if we hit ceiling
 	if (bDidHit && Velocity.Z > 0)
