@@ -9,7 +9,9 @@
 USimpleMovementComponent::USimpleMovementComponent(): MoveSpeed(600.0f), JumpForce(420.0f), MaxCeilingStopAngle(5.0f),
                                                       MaxStepUpHeight(20.0f),
                                                       MinStepUpSteepness(10.0f),
-                                                      MaxStepDownHeight(20.0f)
+                                                      MaxStepDownHeight(20.0f),
+                                                      GroundActor(nullptr),
+                                                      GroundActorLastYaw(0.0f)
 {
 }
 
@@ -50,6 +52,7 @@ void USimpleMovementComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	}
 
 	UpdateComponentVelocity();
+	UpdateGroundActor();
 }
 
 void USimpleMovementComponent::Jump()
@@ -99,6 +102,52 @@ bool USimpleMovementComponent::CheckForGround(FHitResult& OutHit, const float He
 	const FVector EndLocation = ColliderLocation - Offset;
 
 	return SweepWithCollider(OutHit, StartLocation, EndLocation);
+}
+
+void USimpleMovementComponent::UpdateGroundActor()
+{
+	FHitResult GroundHit;
+	const bool bDidHit = CheckForGround(GroundHit);
+
+	if (bDidHit)
+	{
+		GroundActor = GroundHit.GetActor();
+		GroundActorLastYaw = GroundActor->GetActorRotation().Yaw;
+	}
+	else
+	{
+		GroundActor = nullptr;
+	}
+}
+
+void USimpleMovementComponent::AdjustFromGroundMovement(const float DeltaTime)
+{
+	if (GroundActor)
+	{
+		FRotator NewRotation = UpdatedCollider->GetComponentRotation();
+		FVector GroundActorLocationDelta = GroundActor->GetVelocity() * DeltaTime;
+		const float GroundActorCurrentYaw = GroundActor->GetActorRotation().Yaw;
+		const float GroundActorYawDelta = GroundActorCurrentYaw - GroundActorLastYaw;
+
+		if (FMath::Abs(GroundActorYawDelta) > 0.0f)
+		{
+			NewRotation.Yaw += GroundActorYawDelta;
+
+			FVector SelfLocationRelativeToGroundActor = UpdatedCollider->GetComponentLocation() - GroundActor->
+				GetActorLocation();
+			SelfLocationRelativeToGroundActor.Z = 0;
+
+			const FRotator DeltaRotator = FRotator::MakeFromEuler(FVector(0, 0, GroundActorYawDelta));
+			const FVector OffsetRelativeToGroundActor = DeltaRotator.
+				RotateVector(SelfLocationRelativeToGroundActor);
+			const FVector RotationOffsetRelativeToSelf = OffsetRelativeToGroundActor -
+				SelfLocationRelativeToGroundActor;
+			GroundActorLocationDelta += RotationOffsetRelativeToSelf;
+		}
+
+
+		MoveUpdatedComponent(GroundActorLocationDelta, NewRotation, false);
+	}
 }
 
 bool USimpleMovementComponent::Move(FHitResult& OutInitialHit, FVector& OutMovementDelta, const float DeltaTime)
@@ -198,6 +247,7 @@ void USimpleMovementComponent::DoMovement_Walking(const float DeltaTime)
 	FVector MovementDelta;
 	bool bDidHit = Move(Hit, MovementDelta, DeltaTime);
 
+
 	if (bDidHit)
 	{
 		FVector OutStepUpMovementDelta;
@@ -221,8 +271,9 @@ void USimpleMovementComponent::DoMovement_Walking(const float DeltaTime)
 
 	StepDown();
 
-	const bool bIsGrounded = CheckForGround(Hit);
+	AdjustFromGroundMovement(DeltaTime);
 
+	const bool bIsGrounded = CheckForGround(Hit);
 	if (!bIsGrounded)
 	{
 		MovementState = Falling;

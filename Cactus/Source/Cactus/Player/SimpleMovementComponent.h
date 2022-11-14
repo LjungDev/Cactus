@@ -49,11 +49,18 @@ private:
 	UPROPERTY()
 	UCapsuleComponent* UpdatedCollider;
 
+	UPROPERTY()
+	AActor* GroundActor;
+
 	EMovementState MovementState;
+	float GroundActorLastYaw;
 
 	FVector GetDesiredInputMovement(const FVector InputVector) const;
 	bool SweepWithCollider(FHitResult& OutHit, FVector StartLocation, FVector EndLocation) const;
+	
 	bool CheckForGround(FHitResult& OutHit, const float Height = 5.0f) const;
+	void UpdateGroundActor();
+	void AdjustFromGroundMovement(const float DeltaTime);
 
 	bool Move(FHitResult& OutInitialHit, FVector& OutMovementDelta, const float DeltaTime);
 	void Slide(const FVector MovementDelta, const FHitResult& Hit);
